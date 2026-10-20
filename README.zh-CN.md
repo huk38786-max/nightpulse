@@ -2,8 +2,8 @@
 
 中文 · [English](./README.md)
 
-# 《霸道总裁爱上患有 ADHD 的我》
-## 支持 Codex 与 Claude Code 的微信桥接系统：Cyberboss
+# Nightpulse · 夜脉
+## 基于 Cyberboss 的自主唤醒与行动连续性
 
 > “你尽管在多巴胺里逃避，但我永远会在下一个时间戳抓到你。”
 
@@ -21,6 +21,8 @@
 </p>
 
 </div>
+
+Nightpulse 基于 [WenXiaoWendy/cyberboss](https://github.com/WenXiaoWendy/cyberboss)，增加可选的隔离自唤醒、连续性状态与行动回传。配置与限制见 [自唤醒说明](docs/autonomous-wakes.md)。下方保留上游的命令名称与使用指南，便于兼容。命名修改日期为 2026-10-20；保留原项目署名及 AGPL-3.0-only 许可证。
 
 <p align="center">
   <img src="./docs/images/chat-example-1.jpg" alt="Cyberboss 示例对话 1" width="23%" />

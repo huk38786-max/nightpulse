@@ -2,8 +2,8 @@
 
 [中文](./README.zh-CN.md) · English
 
-# The Overbearing Boss Fell for My ADHD
-## Cyberboss: a WeChat bridge for Codex and Claude Code
+# Nightpulse · 夜脉
+## Autonomous wake continuity, built on Cyberboss
 
 > "Keep escaping into dopamine if you want. I'll still catch you at the next timestamp."
 
@@ -21,6 +21,8 @@
 </p>
 
 </div>
+
+Nightpulse is an independent fork of [WenXiaoWendy/cyberboss](https://github.com/WenXiaoWendy/cyberboss), adding optional isolated autonomous wakes, continuity state, and action receipts. See the [wake setup and limitations](docs/autonomous-wakes.md). The upstream command names and guide below are retained for compatibility. Naming changes dated 2026-10-20; original attribution and AGPL-3.0-only licensing are preserved.
 
 <p align="center">
   <img src="./docs/images/IMG_0241.PNG" alt="Cyberboss English demo 1" width="31%" />
