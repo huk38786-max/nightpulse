@@ -98,3 +98,7 @@ Forking can reuse an eligible main-session prefix, but there is no cache-renewal
 guarantee. CLI versions, prefix changes, cache expiry, context length, and fresh
 outputs affect usage. This feature makes no quota-saving claim. It does not
 include the separate cache-observation journal or historical replay tooling.
+
+## Optional recall hooks
+
+The [automatic recall module](memory-recall.md) can be installed separately. The isolated Claude runner sets `NIGHTPULSE_ISOLATED_WAKE=1` on its child process so those hooks skip retrieval and local archiving in the disposable branch, including SessionStart. Main-session hooks continue normally. Action receipts travel through the bridge ledger, not through a replay of the fork transcript.

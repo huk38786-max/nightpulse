@@ -35,7 +35,7 @@ async function runIsolatedClaudeTurn({
   });
   const child = spawn(command, args, {
     cwd,
-    env,
+    env: { ...(env || process.env), NIGHTPULSE_ISOLATED_WAKE: "1" },
     stdio: ["pipe", "pipe", "pipe"],
     shell: false,
   });

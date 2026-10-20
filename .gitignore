@@ -7,3 +7,9 @@ node_modules/
 npm-debug.log*
 third_party/
 firmware/
+
+# Private recall runtime artifacts
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.sqlite3-*

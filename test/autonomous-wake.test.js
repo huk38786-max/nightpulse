@@ -111,7 +111,7 @@ lines.on("line", (line) => {
   if (msg.type === "user") {
     console.log(JSON.stringify({ type: "control_request", request_id: "permission", request: { subtype: "can_use_tool", tool_name: "mcp__example__read", input: { item_id: "fixture" } } }));
   } else if (msg.type === "control_response") {
-    console.log(JSON.stringify({ type: "result", result: JSON.stringify({ action: "silent", permission: msg.response.response, argv: process.argv.slice(2) }) }));
+    console.log(JSON.stringify({ type: "result", result: JSON.stringify({ action: "silent", permission: msg.response.response, argv: process.argv.slice(2), wake: process.env.NIGHTPULSE_ISOLATED_WAKE }) }));
     lines.close();
   }
 });
@@ -124,6 +124,7 @@ lines.on("line", (line) => {
   assert.equal(output.permission.behavior, "allow");
   assert.deepEqual(output.permission.updatedInput, { item_id: "fixture" });
   assert.ok(output.argv.includes("--no-session-persistence"));
+  assert.equal(output.wake, "1");
 });
 
 test("CLI error envelopes cannot be accepted as a successful isolated action", async (t) => {

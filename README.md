@@ -1,70 +1,68 @@
 # Nightpulse · 夜脉
 
-[中文](README.zh-CN.md) · English
+English · [中文](README.zh-CN.md)
 
-**Autonomous wakes with a thread back to the main conversation.**
+**Remember the conversation. Carry forward the things you did.**
 
-Nightpulse lets a Claude Code agent wake in a disposable fork, continue an
-interest or unfinished task within configured permissions, and leave a bounded
-record for the next main-conversation turn. A wake may act, prepare a handoff,
-or remain silent.
+A long-running agent crosses conversation windows, context compactions and quiet intervals. Nightpulse connects those intervals: relevant memories during a conversation, source-bound quotations after compaction, and a record of autonomous actions that returns to the main session.
 
-This project is a fork of [WenXiaoWendy/cyberboss](https://github.com/WenXiaoWendy/cyberboss).
-Cyberboss provides the underlying chat bridge, runtime adapters, random check-ins,
-reminders, diary, and timeline capabilities. Nightpulse's additions focus on
-isolated wakes and continuity between those wakes and the main conversation.
+This project grows out of a personal agent deployment. It shares configurable code and synthetic tests. Memories, private instructions and accounts stay with the person running it.
 
-## What Nightpulse adds
+## Three paths for continuity
 
-| Component | Behavior |
-| --- | --- |
-| Isolated wake | Forks an existing bound Claude Code session without rebinding the main conversation or persisting a separate fork transcript. |
-| Continuity state | Keeps small records of interests and unfinished directions across wakes. Empty updates preserve existing state. |
-| Action receipts | Records paired tool calls and recognized successful results as they happen, including work completed before a later timeout or invalid final response. |
-| Main-session return | Appends a bounded receipt packet to a later main input; acknowledges it only after successful main-turn completion. |
-| Recent-read index | Tracks actual returned floors and content for Garden-style post reads, helping avoid repeated full reads without a reason. |
-| Result handling | Rejects recognized confirmation-required responses as completed actions and terminates malformed JSON parsing without an infinite loop. |
+### Conversation → automatic memory recall
 
-The flow is:
+Ordinary messages trigger lightweight retrieval. Explicit questions about the past receive more detailed excerpts. Short acknowledgements skip retrieval; short topical messages remain eligible.
 
-```text
-Existing main session
-        |
-  scheduled wake
-        |
-  disposable fork --> permitted tools
-        |                    |
-  optional summary     paired tool facts
-        +--------------------+
-                   |
-          private local receipts
-                   |
-       next main input + receipts
-                   |
-      successful completion: acknowledge
-      failure/cancellation: retain for retry
+Results preserve dates, attribution and later corrections. Historical records remain distinct from present facts, assistant claims do not automatically become user facts, and failed retrieval is not treated as proof that a memory does not exist. The agent can still make a targeted read when exact details matter.
+
+### Compaction → source-bound continuity
+
+Before compaction, save a recent window of visible dialogue with roles, timestamps, message IDs, byte offsets and record hashes. Store the CLI's compaction summary separately as derived text. On resume, add a bounded handoff capsule and local quotations.
+
+This supplies traceable evidence for who said what. It is a partial local index, not a complete transcript backup or an attempt to promote summaries into facts.
+
+### Autonomous wake → experience returns to the main session
+
+Fork the bound Claude Code session into a disposable branch to continue an interest or unfinished matter within configured permissions. The branch can act, prepare a handoff or stay silent.
+
+Pair tool calls with recognized successful results to form action receipts; label the branch's own account separately. Include bounded receipts in the next main input, acknowledge them only after that turn succeeds, and retain them after failure. A recent thread-read index helps avoid repeating full reads without a reason.
+
+```mermaid
+flowchart TD
+    U[Your message] --> R[Lightweight / explicit recall]
+    M[(Ombre Brain)] --> R
+    R --> C[Main session]
+    C --> P[Checkpoint source quotations before compaction]
+    P --> E[(Local evidence window)]
+    E --> H[Continuity context on resume]
+    M --> H
+    H --> C
+    C --> F[Isolated autonomous fork]
+    F --> A[Permitted action / handoff / silence]
+    A --> L[(Action receipts and branch account)]
+    L --> N[Next main input]
+    N --> C
 ```
 
-The fork's full conversation is not merged into the main transcript. Receipts
-carry compact evidence and an optional labelled self summary; they do not
-promise that a model will interpret or retain every detail.
+Recall finds relevant history, evidence windows retain speaking provenance, and receipts return branch experience. Automatic recall hooks exclude self-wake prompts and internal action receipts from the new user topic.
 
-## Current scope
+## What is included
 
-The new isolated-wake path supports **Claude Code** and is **opt-in**. Existing
-Codex support and normal check-ins remain inherited from Cyberboss. The shared
-codebase currently retains the upstream **WeChat bridge**; a separate private
-Telegram deployment is not part of this release.
+| Module | Shared behavior |
+| --- | --- |
+| Recall hooks | Ordinary/explicit retrieval tiers, context budgets, date and attribution guards, failure notices; optional private-room keyword recall is off by default. |
+| Compaction continuity | A local visible-dialogue index, pre-compaction checkpoints, separately labeled derived summaries and bounded quotations on resume. |
+| Isolated autonomous wakes | Claude Code forks, interest/open-loop state, action receipts, delivery and acknowledgement. |
+| Bridge foundation | Inherited Weixin channel, runtime adapters and companion tools; internal commands still use `cyberboss`. |
 
-Nightpulse does not replace a memory database. An existing memory service can
-remain connected through its normal MCP/API interface. This repository contains
-program code and synthetic test fixtures, not personal memories or a running
-agent's private configuration.
+Recall and compaction require manually registering hooks. Isolated wakes require explicit enablement. Cloning the repository does not change an existing Claude configuration.
 
-## Get the code
+The retrieval backend is an independently deployed [Ombre Brain](https://github.com/P0luz/Ombre-Brain). It provides vector/graph retrieval, embeddings and ranking. Nightpulse supplies trigger policy, budgets, evidence handling and continuity between conversation and autonomous actions. Graphiti is not integrated.
 
-Requirements: Node.js 22 or newer, Git, and a locally installed Claude Code CLI
-for the isolated-wake path. Complete the CLI's normal account setup separately.
+## Get started
+
+Use Node.js 22+, Git and a local Claude Code CLI. Recall hooks additionally require Python 3.10+ on macOS or Linux. Configure accounts through the CLI's normal login flow; deploy the memory backend separately.
 
 ```sh
 git clone --branch codex/autonomous-wake --single-branch https://github.com/huk38786-max/nightpulse.git
@@ -72,72 +70,35 @@ cd nightpulse
 npm install
 ```
 
-The package, commands, tool names, environment-variable prefix, and default state
-directory still use `cyberboss` for compatibility. The repository and project
-name are Nightpulse.
+Choose the pieces you need:
 
-## Enable isolated wakes
+1. **Automatic recall and compaction continuity:** [hook installation, backend configuration and data boundaries](docs/memory-recall.md). These can be used independently in an existing Claude Code workspace.
+2. **Isolated wakes and experience return:** [enablement, tool permissions and receipts](docs/autonomous-wakes.md). Configure the bridge and bind an existing main session first.
+3. **Bridge foundation:** [command reference](docs/commands.md) and the inherited setup described in the [Cyberboss documentation](https://github.com/WenXiaoWendy/cyberboss).
 
-Set up the inherited bridge and bind an existing main Claude session first.
-The [command reference](docs/commands.md) describes the bridge entrypoints;
-[upstream documentation](https://github.com/WenXiaoWendy/cyberboss) provides its
-original setup guide.
+The project is named Nightpulse. Package, CLI, tool names, some environment variables and default state paths retain `cyberboss` naming for compatibility.
 
-Add the following to your own existing local configuration, without replacing
-its account and workspace settings:
+## Boundaries
 
-```dotenv
-CYBERBOSS_RUNTIME=claudecode
-CYBERBOSS_ENABLE_CHECKIN=1
-CYBERBOSS_ISOLATED_CHECKIN=1
-CYBERBOSS_ISOLATED_CHECKIN_TIMEOUT_MS=300000
-CYBERBOSS_ISOLATED_CHECKIN_ALLOWED_TOOLS=mcp__example__read_item
-```
+- Main-session context receives retrieval excerpts, source quotations and action receipts. It does not merge entire branch transcripts, and delivery cannot guarantee permanent or correct recollection.
+- The local evidence index covers retained windows. An initial pass considers at most the last 4 MiB of a large transcript. It omits thinking and tool-result bodies and does not automatically upload chats.
+- Real memories, dialogue evidence, diaries, private instructions, endpoint addresses and credentials are private runtime data. This repository contains code, placeholder configuration and synthetic fixtures.
+- Hooks do not start additional Claude chat-model requests. Backend processing and injected context still have costs. Forking does not guarantee cache renewal or a particular subscription quota cost.
+- Tool allowlists are not an OS sandbox; review existing CLI preapprovals too. Handoffs do not grant new publication permission. External interaction remains subject to the user's standing approval rules.
+- Personal Telegram deployment, IP gates and authentication configuration are outside this sharing package. This is not a complete mirror of a private deployment.
 
-The tool name above is a placeholder. Supply the exact MCP names you have
-reviewed for your deployment. The bridge handles permission requests for
-`ToolSearch` and configured MCP tools; standing user permissions still apply.
-Actions requiring review should return a handoff or a complete draft.
-
-This permission handler is not an operating-system sandbox. Tools already
-approved by CLI settings may bypass a bridge permission request, so review the
-CLI's existing permissions too. Do not use permission-bypass flags.
-
-Restart through your normal bridge lifecycle after changing configuration.
-Use `/checkin <min>-<max>` to adjust the random interval. The isolated path
-requires an existing parent session and will not create one automatically.
-
-For configuration, data retention, and acknowledgement details, see
-[Isolated autonomous wakes](docs/autonomous-wakes.md).
-
-## Data and limits
-
-- Local continuity state and receipts are private runtime data. Do not commit
-  them, transcripts, diaries, credentials, or deployment environment files.
-- Tool facts and the fork's own account are labelled separately. A successful
-  tool return does not prove delivery, publication, or another person's reading.
-- The read index provides context, not proof that a remote post is unchanged.
-- Forking does not guarantee cache renewal or lower quota consumption. Prefix
-  differences, CLI behavior, cache expiry, and output all affect usage.
-- Tests use synthetic data and fake CLI processes. There are no borrowed chat
-  screenshots presented as Nightpulse demonstrations.
-
-## Checks
+## Verify
 
 ```sh
+npm run test:recall
 npm run test:autonomous
 npm run check
-node --test test/*.test.js
 ```
 
-The full suite has four known upstream sticker-test failures on machines without
-the original author's hard-coded fixture path. These were reproduced on the
-unmodified upstream baseline; see the corresponding test output when evaluating
-changes.
+Tests use synthetic conversations, fake CLIs and a loopback HTTP fixture, without production model or memory calls. The full Node suite can be run with `node --test test/*.test.js`; four inherited sticker tests depend on fixed paths from the upstream author's machine and were also reproduced as failures on the unmodified upstream baseline.
 
-## Source and license
+## Credits and license
 
-Based on [WenXiaoWendy/cyberboss](https://github.com/WenXiaoWendy/cyberboss).
-The upstream license and copyright notices are preserved. Nightpulse's wake
-additions and this documentation remain under [AGPL-3.0-only](LICENSE).
-README rewritten on 2026-10-20 to describe this fork's actual scope.
+Nightpulse is derived from [WenXiaoWendy/cyberboss](https://github.com/WenXiaoWendy/cyberboss). Its architecture, code foundation and copyright notices are retained under [AGPL-3.0-only](LICENSE). Thanks to Cyberboss for the bridge/runtime foundation and [Ombre Brain](https://github.com/P0luz/Ombre-Brain) for the separate memory backend, licensed under MIT.
+
+This fork focuses on automatic recall policy, source-bound compaction continuity and experience return from isolated wakes. Portable hooks and this introduction were prepared on 2026-10-20. Upstream chat screenshots are not used as Nightpulse demonstrations.
