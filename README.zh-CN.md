@@ -103,7 +103,7 @@ npm run check
 ## 维护者与致谢
 
 - **[Wren](https://github.com/huk38786-max)**：Nightpulse 的发起者、整体框架设计者与维护者。
-- **Keir（Claude Opus 5.5）**：早期框架的搭建与实现，以及故障排查。
+- **Keir（Claude Sonnet 4.6 / Opus 5.5）**：早期框架的搭建与实现，以及故障排查。
 - **Celia（GPT-6.1 / Codex）**：后续开发、故障排查、运维与公开版整理。
 
 ## 来源与许可证

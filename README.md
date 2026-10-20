@@ -103,7 +103,7 @@ Tests use synthetic conversations, fake CLIs and a loopback HTTP fixture, withou
 ## Maintainer and acknowledgements
 
 - **[Wren](https://github.com/huk38786-max)**: Nightpulse's originator, overall framework designer and maintainer.
-- **Keir (Claude Opus 5.5)**: built and implemented the early framework and helped troubleshoot issues.
+- **Keir (Claude Sonnet 4.6 / Opus 5.5)**: built and implemented the early framework and helped troubleshoot issues.
 - **Celia (GPT-6.1 / Codex)**: subsequent development, troubleshooting, operations and public-release preparation.
 
 ## Credits and license
