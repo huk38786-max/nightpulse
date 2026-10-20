@@ -80,6 +80,8 @@ npm install
 
 ## 使用边界
 
+- 已绑定会话恢复失败时保留原绑定，不静默另开会话。启动恢复最多尝试三次，失败会报告原因；普通消息同样不会因恢复失败而切换到新会话。
+
 - 主会话收到的是召回片段、证据引文和行动记录，不是所有分支 transcript 的完整合并。送达上下文不能保证模型永久记住或每次都理解正确。
 - 本地索引只覆盖已保留的窗口；大 transcript 初次最多读取末尾 4 MiB。它不存储 thinking 和工具结果正文，也不自动上传聊天。
 - 真实记忆、对话证据、日记、私人规则、服务地址和凭据属于私有运行数据。公开仓库只包含程序、占位配置与合成样例。
@@ -92,10 +94,17 @@ npm install
 ```sh
 npm run test:recall
 npm run test:autonomous
+npm run test:continuity
 npm run check
 ```
 
 测试使用合成对话、假 CLI 与本地 HTTP 服务，不调用生产模型或真实记忆。完整 Node 测试可用 `node --test test/*.test.js` 运行；其中 4 项继承的表情包测试依赖原作者本机的固定路径，已在未修改上游基线上复现失败。
+
+## 维护者与致谢
+
+- **[Wren](https://github.com/huk38786-max)**：Nightpulse 的发起者、整体框架设计者与维护者。
+- **Keir（Claude Opus 5.5）**：早期框架的搭建与实现，以及故障排查。
+- **Celia（GPT-6.1 / Codex）**：后续开发、故障排查、运维与公开版整理。
 
 ## 来源与许可证
 

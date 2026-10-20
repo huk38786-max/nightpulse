@@ -228,8 +228,6 @@ function isAllowedIsolatedTool(name, allowedTools = []) {
   return Array.isArray(allowedTools) && allowedTools.includes(normalized);
 }
 
-const isReadOnlyScoutTool = isAllowedIsolatedTool;
-
 function normalizeToolResult(value) {
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) return value == null ? "" : JSON.stringify(value);
@@ -250,7 +248,6 @@ function parseJson(value) {
 
 module.exports = {
   isAllowedIsolatedTool,
-  isReadOnlyScoutTool,
   runIsolatedClaudeTurn,
   sanitizeIsolatedExtraArgs,
 };

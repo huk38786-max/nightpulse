@@ -53,6 +53,8 @@ const BACKOFF_DELAY_MS = 30_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
 const MAX_INBOUND_STICKER_IMAGE_BATCH = 10;
 const INBOUND_IMAGE_BATCH_IDLE_MS = 1_500;
+const STARTUP_RESUME_MAX_ATTEMPTS = 3;
+const STARTUP_RESUME_RETRY_DELAYS_MS = [1_000, 3_000];
 
 function createRuntimeAdapter(config) {
   if (config.runtime === "claudecode") {
@@ -138,7 +140,8 @@ class CyberbossApp {
     const runtimeState = await this.runtimeAdapter.initialize();
     const knownContextTokens = Object.keys(this.channelAdapter.getKnownContextTokens()).length;
     const syncBuffer = this.channelAdapter.loadSyncBuffer();
-    await this.restoreBoundThreadSubscriptions();
+    const startupResumeFailures = await this.restoreBoundThreadSubscriptions();
+    await this.notifyStartupResumeFailures(startupResumeFailures);
 
     console.log("[cyberboss] bootstrap ok");
     console.log(`[cyberboss] channel=${this.channelAdapter.describe().id}`);
@@ -1024,9 +1027,6 @@ class CyberbossApp {
         });
       }
     } catch (error) {
-      if (error?.code === "CLAUDE_NETWORK_BLOCKED") {
-        return false;
-      }
       console.error(`[cyberboss] isolated autonomous check-in failed: ${formatErrorMessage(error)}`);
       return true;
     } finally {
@@ -1762,6 +1762,7 @@ class CyberbossApp {
     const bindings = sessionStore.listBindings();
     const seenThreadIds = new Set();
 
+    const failures = [];
     for (const binding of bindings) {
       const bindingKey = normalizeText(binding?.bindingKey);
       if (!bindingKey) {
@@ -1782,11 +1783,65 @@ class CyberbossApp {
           continue;
         }
         seenThreadIds.add(normalizedThreadId);
-        await this.runtimeAdapter.resumeThread({
-          threadId: normalizedThreadId,
-          workspaceRoot: normalizedWorkspaceRoot,
-        }).catch(() => {});
+        let finalError = null;
+        for (let attempt = 1; attempt <= STARTUP_RESUME_MAX_ATTEMPTS; attempt += 1) {
+          try {
+            await this.runtimeAdapter.resumeThread({
+              threadId: normalizedThreadId,
+              workspaceRoot: normalizedWorkspaceRoot,
+            });
+            finalError = null;
+            break;
+          } catch (error) {
+            finalError = error;
+            console.error(
+              `[cyberboss] startup resume failed attempt=${attempt}/${STARTUP_RESUME_MAX_ATTEMPTS} thread=${normalizedThreadId} workspace=${normalizedWorkspaceRoot}: ${formatErrorMessage(error)}`
+            );
+            if (attempt < STARTUP_RESUME_MAX_ATTEMPTS) {
+              const waitMs = STARTUP_RESUME_RETRY_DELAYS_MS[attempt - 1] || 3_000;
+              await (this.startupResumeSleep || sleep)(waitMs);
+            }
+          }
+        }
+        if (finalError) {
+          failures.push({
+            bindingKey,
+            threadId: normalizedThreadId,
+            workspaceRoot: normalizedWorkspaceRoot,
+            attempts: STARTUP_RESUME_MAX_ATTEMPTS,
+            error: formatErrorMessage(finalError),
+          });
+        }
       }
+    }
+    return failures;
+  }
+
+  async notifyStartupResumeFailures(failures = []) {
+    for (const failure of failures) {
+      const target = this.resolveReplyTargetForBinding(failure.bindingKey);
+      if (!target) {
+        console.error(
+          `[cyberboss] startup resume notification skipped thread=${failure.threadId} reason=no_reply_target`
+        );
+        continue;
+      }
+      await this.channelAdapter.sendText({
+        userId: target.userId,
+        contextToken: target.contextToken,
+        preserveBlock: true,
+        text: [
+          "⚠️ CyberBoss 没能接回原来的 Claude 会话，已经暂停在旧会话上，没有静默新开。",
+          `会话：${failure.threadId}`,
+          `已重试：${failure.attempts} 次`,
+          `原因：${failure.error}`,
+          "请检查原会话后重试；只有你明确选择新会话时才会更换绑定。",
+        ].join("\n"),
+      }).catch((error) => {
+        console.error(
+          `[cyberboss] startup resume notification failed thread=${failure.threadId}: ${formatErrorMessage(error)}`
+        );
+      });
     }
   }
 

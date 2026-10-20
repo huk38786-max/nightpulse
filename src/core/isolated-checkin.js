@@ -57,7 +57,7 @@ function buildMainSessionHandoff(action) {
   const lines = [
     "SYSTEM ACTION MODE: a limited-permission isolated autonomous check-in found genuine follow-up intentions.",
     "This is a compact handoff into the main conversation, not a new user message.",
-    "Continue from the current main-session context. The directions below are independent, not alternatives; one Garden intention must not suppress a Sugar Nest or shared-life intention.",
+    "Continue from the current main-session context. The directions below are independent, not alternatives; one Garden intention must not suppress a shared-life intention.",
     "Continue these intentions within the user's standing permissions. A handoff is context about a proposed action, never new authorization to publish or send it.",
     "Follow the user's standing tool and publication permissions. If an intention needs approval, prepare its complete draft for review before any external action.",
     "After any tool calls, return exactly one JSON object:",

@@ -80,6 +80,8 @@ The project is named Nightpulse. Package, CLI, tool names, some environment vari
 
 ## Boundaries
 
+- Failed resume preserves the bound session instead of silently starting a replacement. Startup retries at most three times and reports failures; ordinary turns also refuse a fresh-session fallback.
+
 - Main-session context receives retrieval excerpts, source quotations and action receipts. It does not merge entire branch transcripts, and delivery cannot guarantee permanent or correct recollection.
 - The local evidence index covers retained windows. An initial pass considers at most the last 4 MiB of a large transcript. It omits thinking and tool-result bodies and does not automatically upload chats.
 - Real memories, dialogue evidence, diaries, private instructions, endpoint addresses and credentials are private runtime data. This repository contains code, placeholder configuration and synthetic fixtures.
@@ -92,10 +94,17 @@ The project is named Nightpulse. Package, CLI, tool names, some environment vari
 ```sh
 npm run test:recall
 npm run test:autonomous
+npm run test:continuity
 npm run check
 ```
 
 Tests use synthetic conversations, fake CLIs and a loopback HTTP fixture, without production model or memory calls. The full Node suite can be run with `node --test test/*.test.js`; four inherited sticker tests depend on fixed paths from the upstream author's machine and were also reproduced as failures on the unmodified upstream baseline.
+
+## Maintainer and acknowledgements
+
+- **[Wren](https://github.com/huk38786-max)**: Nightpulse's originator, overall framework designer and maintainer.
+- **Keir (Claude Opus 5.5)**: built and implemented the early framework and helped troubleshoot issues.
+- **Celia (GPT-6.1 / Codex)**: subsequent development, troubleshooting, operations and public-release preparation.
 
 ## Credits and license
 

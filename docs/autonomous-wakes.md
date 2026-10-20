@@ -86,6 +86,7 @@ remote service's later state.
 
 ```sh
 npm run test:autonomous
+npm run test:continuity
 npm run check
 ```
 
@@ -102,3 +103,9 @@ include the separate cache-observation journal or historical replay tooling.
 ## Optional recall hooks
 
 The [automatic recall module](memory-recall.md) can be installed separately. The isolated Claude runner sets `NIGHTPULSE_ISOLATED_WAKE=1` on its child process so those hooks skip retrieval and local archiving in the disposable branch, including SessionStart. Main-session hooks continue normally. Action receipts travel through the bridge ledger, not through a replay of the fork transcript.
+
+## Known limitations
+
+With isolated wakes enabled, system-message dispatch runs in the background so the bridge can keep polling and accepting user messages. A wake still shares the workspace turn gate with the main session: incoming chat is buffered until that wake finishes, and does not preempt it. This can delay the agent's response. Background polling and preempting an in-flight wake are different capabilities; the latter is not implemented here. Existing non-isolated check-ins retain their original foreground dispatch behavior.
+
+Bound Claude sessions are validated against the CLI-reported session ID before a resumed user turn is sent. Startup restoration tries at most three times with bounded delays, logs each failure and attempts a channel notification after exhaustion. If no valid channel target exists, notification failure is logged locally. Failed resume retains the saved binding; it does not clear history or silently open a new session. Subsequent input continues to target that original session unless the user explicitly selects a new one.

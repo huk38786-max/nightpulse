@@ -23,6 +23,7 @@ class ClaudeCodeProcessClient {
     this.alive = false;
     this.sessionWaiters = new Set();
     this.suppressNextCloseEvent = false;
+    this.pendingToolInputs = new Map();
   }
 
   onMessage(listener) {
@@ -46,6 +47,7 @@ class ClaudeCodeProcessClient {
   async connect(resumeSessionId = "") {
     if (this.child) return;
     this.suppressNextCloseEvent = false;
+    this.pendingToolInputs.clear();
     this.sessionId = "";
     this.resumeSessionId = isValidSessionId(resumeSessionId) ? resumeSessionId : "";
     this.activeThreadId = "";
@@ -263,6 +265,7 @@ class ClaudeCodeProcessClient {
   handleControlRequest(raw) {
     const request = raw?.request || {};
     if (request.subtype !== "can_use_tool") return;
+    this.pendingToolInputs.set(raw.request_id, structuredClone(request.input || {}));
     this.emit({
       type: "approval.requested",
       requestId: raw.request_id,
@@ -302,9 +305,12 @@ class ClaudeCodeProcessClient {
     if (!this.alive || !this.stdin) {
       throw new Error("claudecode process not running");
     }
+    if (!this.pendingToolInputs.has(requestId)) {
+      throw new Error("no pending tool approval for this request id");
+    }
     const behavior = decision === "accept" ? "allow" : "deny";
     const response = behavior === "allow"
-      ? { behavior: "allow", updatedInput: {} }
+      ? { behavior: "allow", updatedInput: this.pendingToolInputs.get(requestId) }
       : { behavior: "deny", message: "The user denied this tool use. Stop and wait for the user's instructions." };
     const payload = JSON.stringify({
       type: "control_response",
@@ -315,6 +321,7 @@ class ClaudeCodeProcessClient {
       },
     });
     this.stdin.write(payload + "\n");
+    this.pendingToolInputs.delete(requestId);
   }
 
   async waitForSessionId({ timeoutMs = 5000 } = {}) {
@@ -336,6 +343,7 @@ class ClaudeCodeProcessClient {
   }
 
   async close() {
+    this.pendingToolInputs.clear();
     if (!this.child) return;
     if (this.stdin && !this.stdin.destroyed) {
       this.stdin.end();

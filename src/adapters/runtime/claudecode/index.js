@@ -117,7 +117,8 @@ function createClaudeCodeRuntimeAdapter(config) {
       await closeWorkspaceClient(normalizedWorkspaceRoot);
     }
 
-    if (normalizedThreadId && clientMatchesThread(existingClient, normalizedThreadId)) {
+    if (normalizedThreadId && existingClient?.alive
+      && normalizeThreadId(existingClient.sessionId) === normalizedThreadId) {
       return { client: existingClient, threadId: normalizedThreadId };
     }
 
@@ -134,6 +135,24 @@ function createClaudeCodeRuntimeAdapter(config) {
       await client.connect(normalizedThreadId);
     }
 
+    if (normalizedThreadId) {
+      try {
+        const reportedThreadId = normalizeThreadId(
+          await client.waitForSessionId({ timeoutMs: CLAUDE_RESUME_SESSION_TIMEOUT_MS })
+        );
+        if (reportedThreadId !== normalizedThreadId) {
+          throw new Error("claudecode resume returned an unexpected session id");
+        }
+      } catch (error) {
+        // Failed clients can already have been removed by their event handler.
+        // Close this exact client regardless, without changing the saved binding.
+        await client.close().catch(() => {});
+        if (clientsByWorkspace.get(normalizedWorkspaceRoot) === client) {
+          clientsByWorkspace.delete(normalizedWorkspaceRoot);
+        }
+        throw error;
+      }
+    }
     return { client, threadId: normalizedThreadId || normalizeThreadId(client.sessionId) };
   }
   async function closeWorkspaceClient(workspaceRoot) {
@@ -286,19 +305,9 @@ function createClaudeCodeRuntimeAdapter(config) {
           modelProvider: "",
         });
       }
-      let openingTurn = !threadId;
-      let attached;
-      try {
-        attached = await attachClientToThread(workspaceRoot, threadId, desiredModel);
-      } catch (error) {
-        if (!threadId) {
-          throw error;
-        }
-        sessionStore.clearThreadIdForWorkspace(bindingKey, workspaceRoot);
-        threadId = "";
-        openingTurn = true;
-        attached = await attachClientToThread(workspaceRoot, "", desiredModel);
-      }
+      const openingTurn = !threadId;
+      // A bound session is never silently replaced when resume fails.
+      const attached = await attachClientToThread(workspaceRoot, threadId, desiredModel);
       const { client, threadId: activeThreadId } = attached;
       const outboundText = openingTurn ? buildOpeningTurnText(config, text) : text;
       const outboundThreadId = activeThreadId || threadId;
