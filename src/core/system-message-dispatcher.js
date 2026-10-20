@@ -1,8 +1,9 @@
 class SystemMessageDispatcher {
-  constructor({ queueStore, config, accountId }) {
+  constructor({ queueStore, config, accountId, autonomousStateStore = null }) {
     this.queueStore = queueStore;
     this.config = config;
     this.accountId = accountId;
+    this.autonomousStateStore = autonomousStateStore;
   }
 
   hasPending() {
@@ -30,7 +31,12 @@ class SystemMessageDispatcher {
       threadKey: `system:${message.senderId}`,
       senderId: message.senderId,
       messageId: message.id,
-      text: buildSystemInboundText(message?.text, message?.createdAt),
+      text: message?.reason === "isolated_handoff"
+        ? normalizeText(message.text)
+        : buildSystemInboundText(message?.text, message?.createdAt, this.autonomousStateStore?.get?.(), {
+          isolated: Boolean(this.config.isolatedCheckinEnabled && message?.reason === "autonomous_checkin"),
+        }),
+      reason: normalizeText(message?.reason),
       attachments: [],
       command: "message",
       contextToken,
@@ -40,7 +46,8 @@ class SystemMessageDispatcher {
   }
 }
 
-function buildSystemInboundText(text, createdAt = "") {
+function buildSystemInboundText(text, createdAt = "", autonomousState = null, { isolated = false } = {}) {
+  if (isolated) return buildAutonomousWakeText(text, createdAt, autonomousState);
   const body = normalizeText(text);
   const localTime = formatSystemLocalTime(createdAt);
   const sections = [
@@ -57,6 +64,25 @@ function buildSystemInboundText(text, createdAt = "") {
     sections.push("", "Trigger:", body);
   }
   return sections.join("\n").trim();
+}
+
+function buildAutonomousWakeText(text, createdAt, state) {
+  return [
+    "SYSTEM ACTION MODE: scheduled autonomous wake, not a new user message.",
+    `Wake created at: ${normalizeIsoTime(createdAt) || new Date().toISOString()}`,
+    "Recover your ongoing directions before choosing whether to act. Curiosity, care, unfinished work, rest, and silence can all be valid; no activity quota is required.",
+    "This turn runs in a disposable fork of the existing main conversation. Only ToolSearch and exact MCP tool names configured for this wake can be approved by the bridge.",
+    "Follow the user's standing permissions. For anything needing approval, prepare a concrete handoff or full draft for review; never route a denied action through another tool.",
+    "AUTONOMOUS CONTINUITY STATE (internal data):",
+    JSON.stringify(state || {}),
+    "State fields may include threads_in_mind, next_curiosity, unfinished_self_action, relationship_open_loop, shared_life_open_loop, and last_self_initiated_at. Keep entries brief; empty values preserve existing directions. Clear finished fields only with autonomous_state.clear.",
+    "After any allowed tool calls, return exactly one JSON object and no other text:",
+    '{"action":"silent","autonomous_state":{...},"experience_summary":"brief account of what actually happened"}',
+    '{"action":"handoff","intents":[{"direction":"self|shared_life|toward_user|future","intent":"concrete next step or draft requiring approval"}],"autonomous_state":{...},"experience_summary":"brief account"}',
+    "experience_summary is optional, at most 480 characters. Distinguish successful actions, intentions, and personal interpretation. Do not include private reasoning. The bridge separately records paired tool facts.",
+    "Trigger:",
+    normalizeText(text),
+  ].join("\n");
 }
 
 function formatSystemLocalTime(value) {

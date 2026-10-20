@@ -39,6 +39,14 @@ class SystemMessageQueueStore {
     if (!normalized) {
       throw new Error("invalid system message");
     }
+    if (this.state.messages.some((entry) => entry.accountId === normalized.accountId && entry.id === normalized.id)) {
+      return this.state.messages.find((entry) => entry.accountId === normalized.accountId && entry.id === normalized.id);
+    }
+    if (normalized.coalesceKey) {
+      this.state.messages = this.state.messages.filter((entry) => !(entry.accountId === normalized.accountId
+        && entry.senderId === normalized.senderId && entry.workspaceRoot === normalized.workspaceRoot
+        && entry.coalesceKey === normalized.coalesceKey));
+    }
     this.state.messages.push(normalized);
     this.state.messages.sort(compareSystemMessages);
     this.save();
@@ -97,6 +105,8 @@ function normalizeSystemMessage(message) {
     workspaceRoot,
     text,
     createdAt: createdAt || new Date().toISOString(),
+    ...(normalizeText(message.reason) ? { reason: normalizeText(message.reason) } : {}),
+    ...(normalizeText(message.coalesceKey) ? { coalesceKey: normalizeText(message.coalesceKey) } : {}),
   };
 }
 

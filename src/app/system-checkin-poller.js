@@ -6,7 +6,7 @@ const { CheckinConfigStore, resolveDefaultCheckinRange } = require("../core/chec
 const { resolvePreferredSenderId, resolvePreferredWorkspaceRoot } = require("../core/default-targets");
 const { SystemMessageQueueStore } = require("../core/system-message-queue-store");
 
-const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "%USER% comes to mind again.";
+const INTERNAL_CHECKIN_TRIGGER_TEMPLATE = "This is a scheduled autonomous wake.";
 
 async function runSystemCheckinPoller(config) {
   const account = resolveSelectedAccount(config);
@@ -39,6 +39,8 @@ async function runSystemCheckinPoller(config) {
       workspaceRoot: target.workspaceRoot,
       text: buildCheckinTrigger(config),
       createdAt: new Date().toISOString(),
+      reason: "autonomous_checkin",
+      coalesceKey: "autonomous_checkin",
     });
     console.log(`[cyberboss] checkin queued id=${queued.id}`);
   }

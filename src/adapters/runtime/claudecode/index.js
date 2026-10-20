@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { ClaudeCodeProcessClient } = require("./process-client");
+const { runIsolatedClaudeTurn } = require("./isolated-runner");
 const { mapClaudeCodeMessageToRuntimeEvent } = require("./events");
 const { ensureClaudeProjectMcpConfig } = require("./project-settings");
 const { SessionStore } = require("../codex/session-store");
@@ -256,6 +257,19 @@ function createClaudeCodeRuntimeAdapter(config) {
       const refreshText = buildInstructionRefreshText(config);
       await client.sendUserMessage({ text: refreshText, threadId: activeThreadId });
       return { threadId: activeThreadId };
+    },
+    async sendIsolatedTurn({ bindingKey, workspaceRoot, text, model = "", timeoutMs, onEvent }) {
+      const parentThreadId = sessionStore.getThreadIdForWorkspace(bindingKey, workspaceRoot);
+      if (!parentThreadId) throw new Error("isolated check-in requires an existing main Claude session");
+      const settings = ensureClaudeProjectMcpConfig({ workspaceRoot,
+        cyberbossHome: process.env.CYBERBOSS_HOME || path.resolve(__dirname, "..", "..", "..", "..") });
+      return runIsolatedClaudeTurn({
+        command: config.claudeCommand || "claude", cwd: workspaceRoot,
+        env: filterClaudeCodeEnv(process.env), model: resolveModel(model),
+        extraArgs: config.claudeExtraArgs || [], mcpConfigPaths: [settings.configPath],
+        resumeSessionId: parentThreadId, text, timeoutMs, onEvent,
+        allowedTools: config.isolatedCheckinAllowedTools || [],
+      });
     },
     async sendTextTurn(args) {
       return this.sendTurn(args);

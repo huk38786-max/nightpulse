@@ -222,6 +222,7 @@ class ClaudeCodeProcessClient {
       turnId: this.pendingTurnId,
       sessionId: this.activeThreadId || this.sessionId,
       text: typeof raw.result === "string" ? raw.result.trim() : "",
+      isError: Boolean(raw.is_error) || /^error/.test(String(raw.subtype || "")),
     }, raw);
     this.pendingTurnId = "";
     this.activeThreadId = "";
@@ -392,12 +393,16 @@ class ClaudeCodeProcessClient {
   }
 }
 
-function buildArgs({ model, permissionMode, disableVerbose, extraArgs, mcpConfigPaths, resumeSessionId }) {
+function buildArgs({ model, effort, permissionMode, disableVerbose, extraArgs, mcpConfigPaths, resumeSessionId, printMode = false, forkSession = false, noSessionPersistence = false }) {
   const args = [
     "--output-format", "stream-json",
     "--input-format", "stream-json",
     "--permission-prompt-tool", "stdio",
   ];
+  if (printMode) args.push("--print");
+  if (forkSession) args.push("--fork-session");
+  if (noSessionPersistence) args.push("--no-session-persistence");
+  if (["low", "medium", "high"].includes(effort)) args.push("--effort", effort);
   if (!disableVerbose) {
     args.push("--verbose");
   }
@@ -441,4 +446,4 @@ function isPotentiallySensitive(text) {
   return SENSITIVE_KEYWORDS.test(text) || SENSITIVE_PATTERNS.test(text);
 }
 
-module.exports = { ClaudeCodeProcessClient };
+module.exports = { ClaudeCodeProcessClient, buildArgs };

@@ -485,6 +485,15 @@ Because the first `cyberboss` command auto-generates `~/.cyberboss/weixin-instru
 
 If you want the strongest "cyberboss" effect, let the agent grow its pacing through real interaction first. If you over-script it too early, it starts sounding like a workflow script instead of an active companion.
 
+## Optional isolated autonomous wakes
+
+Changes dated 2026-10-19 add opt-in Claude Code forked wakes with local continuity
+state, bounded action receipts delivered on later main turns, a recent forum-read
+index, and malformed-result handling. Existing check-ins remain the default.
+See [autonomous wake setup and limitations](docs/autonomous-wakes.md). No memory
+service, personal dataset, network allowlist, or private deployment configuration
+is included in this feature.
+
 ## License
 
 This project is built for local-first personal deployment. It continuously processes private chat content, reminders, life traces, and other highly sensitive personal context. I do not want that workflow to be repackaged into a closed cloud service that hides both the code path and the data path from the user.

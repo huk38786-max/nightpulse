@@ -29,6 +29,9 @@ const { ThreadStateStore } = require("./thread-state-store");
 const { DeferredSystemReplyStore } = require("./deferred-system-reply-store");
 const { SystemMessageQueueStore } = require("./system-message-queue-store");
 const { SystemMessageDispatcher } = require("./system-message-dispatcher");
+const { AutonomousStateStore } = require("./autonomous-state-store");
+const { AutonomousExperienceStore } = require("./autonomous-experience-store");
+const { isIsolatedAutonomousCheckin, parseIsolatedCheckinResult, buildMainSessionHandoff, hasSuccessfulToolActivity } = require("./isolated-checkin");
 const { TimelineScreenshotQueueStore } = require("./timeline-screenshot-queue-store");
 const { TurnGateStore } = require("./turn-gate-store");
 const { ReminderQueueStore } = require("../adapters/channel/weixin/reminder-queue-store");
@@ -75,6 +78,9 @@ class CyberbossApp {
     this.systemMessageQueue = new SystemMessageQueueStore({ filePath: config.systemMessageQueueFile });
     this.deferredSystemReplyQueue = new DeferredSystemReplyStore({ filePath: config.deferredSystemReplyQueueFile });
     this.checkinConfigStore = new CheckinConfigStore({ filePath: config.checkinConfigFile });
+    this.autonomousStateStore = new AutonomousStateStore({ filePath: config.autonomousStateFile || path.join(config.stateDir, "autonomous-state.json") });
+    this.autonomousExperienceStore = new AutonomousExperienceStore({ filePath: config.autonomousExperienceFile || path.join(config.stateDir, "autonomous-experiences.json") });
+    this.systemMessageFlushPromise = null;
     this.timelineScreenshotQueue = new TimelineScreenshotQueueStore({ filePath: config.timelineScreenshotQueueFile });
     this.reminderQueue = new ReminderQueueStore({ filePath: config.reminderQueueFile });
     this.turnGateStore = new TurnGateStore();
@@ -127,6 +133,7 @@ class CyberbossApp {
       queueStore: this.systemMessageQueue,
       config: this.config,
       accountId: account.accountId,
+      autonomousStateStore: this.autonomousStateStore,
     });
     const runtimeState = await this.runtimeAdapter.initialize();
     const knownContextTokens = Object.keys(this.channelAdapter.getKnownContextTokens()).length;
@@ -436,13 +443,17 @@ class CyberbossApp {
     try {
       const model = this.runtimeAdapter.getSessionStore().getRuntimeParamsForWorkspace(bindingKey, workspaceRoot).model;
       const runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
+      const experienceReceipt = this.autonomousExperienceStore?.prepare({
+        bindingKey, workspaceRoot,
+        sessionId: this.runtimeAdapter.getSessionStore().getThreadIdForWorkspace(bindingKey, workspaceRoot),
+      });
       const sendTurn = typeof this.runtimeAdapter.sendTurn === "function"
         ? this.runtimeAdapter.sendTurn.bind(this.runtimeAdapter)
         : this.runtimeAdapter.sendTextTurn.bind(this.runtimeAdapter);
       const turn = await sendTurn({
         bindingKey,
         workspaceRoot,
-        text: runtimeTurn.text,
+        text: experienceReceipt ? `${runtimeTurn.text}\n\n${experienceReceipt.text}` : runtimeTurn.text,
         attachments: runtimeTurn.attachments,
         model,
         metadata: {
@@ -451,6 +462,7 @@ class CyberbossApp {
           senderId: prepared.senderId,
         },
       });
+      this.autonomousExperienceStore?.trackDelivery(turn, experienceReceipt);
       this.runtimeContextStore?.setActiveContext?.({
         workspaceRoot,
         runtimeId: this.runtimeAdapter.describe().id,
@@ -828,17 +840,27 @@ class CyberbossApp {
   }
 
   async flushPendingSystemMessages() {
-    const pendingMessages = this.systemMessageDispatcher?.drainPending() || [];
-    for (const message of pendingMessages) {
-      try {
-        const dispatched = await this.dispatchSystemMessage(message);
-        if (!dispatched) {
-          this.systemMessageDispatcher.requeue(message);
+    if (this.systemMessageFlushPromise) return false;
+    const pending = this.systemMessageDispatcher?.drainPending() || [];
+    if (!pending.length) return false;
+    const flush = (async () => {
+      for (const message of pending) {
+        try {
+          if (!await this.dispatchSystemMessage(message)) this.systemMessageDispatcher.requeue(message);
+        } catch {
+          this.systemMessageDispatcher?.requeue(message);
         }
-      } catch {
-        this.systemMessageDispatcher?.requeue(message);
       }
+    })();
+    const tracked = flush.finally(() => { this.systemMessageFlushPromise = null; });
+    this.systemMessageFlushPromise = tracked;
+    // A fork may take minutes. Keep polling/accepting user input while the
+    // existing turn gate buffers it until the fork finishes.
+    if (this.config?.isolatedCheckinEnabled) {
+      void tracked.catch((error) => console.error(`[cyberboss] background wake failed: ${error.message}`));
+      return true;
     }
+    return tracked;
   }
 
   async flushPendingTimelineScreenshots(account) {
@@ -943,10 +965,107 @@ class CyberbossApp {
       senderId: prepared.senderId,
     });
     const workspaceRoot = prepared.workspaceRoot || this.resolveWorkspaceRoot(bindingKey);
+    if (this.hasPendingInboundMessage?.(bindingKey, workspaceRoot)
+      || this.hasPendingImageInbound?.(bindingKey, workspaceRoot)) return false;
     if (this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
       return false;
     }
+    if (this.config?.isolatedCheckinEnabled && isIsolatedAutonomousCheckin(message)
+      && typeof this.runtimeAdapter.sendIsolatedTurn === "function") {
+      return this.dispatchIsolatedAutonomousCheckin({ message, prepared, bindingKey, workspaceRoot });
+    }
     return this.dispatchPreparedTurn({ bindingKey, workspaceRoot, prepared });
+  }
+
+  async dispatchIsolatedAutonomousCheckin({ message, prepared, bindingKey, workspaceRoot }) {
+    this.turnGateStore.begin(bindingKey, workspaceRoot);
+    const traceId = `isolated-${crypto.randomUUID()}`;
+    let action = null;
+    const experienceObservation = this.autonomousExperienceStore?.beginObservation({
+      bindingKey, workspaceRoot, runId: traceId,
+    });
+    const observeExperience = (event) => {
+      try { experienceObservation?.observe(event); }
+      catch (error) { console.error(`[cyberboss] experience receipt failed: ${error.message}`); }
+    };
+    try {
+      const model = this.runtimeAdapter.getSessionStore()
+        .getRuntimeParamsForWorkspace(bindingKey, workspaceRoot).model;
+      const runtimeTurn = await this.buildRuntimeTurn({ prepared, model });
+      const experienceReceipt = this.autonomousExperienceStore?.prepare({
+        bindingKey, workspaceRoot,
+        sessionId: this.runtimeAdapter.getSessionStore().getThreadIdForWorkspace(bindingKey, workspaceRoot),
+        isolated: true,
+      });
+      const result = await this.runtimeAdapter.sendIsolatedTurn({
+        bindingKey,
+        workspaceRoot,
+        text: experienceReceipt ? `${runtimeTurn.text}\n\n${experienceReceipt.text}` : runtimeTurn.text,
+        model,
+        timeoutMs: this.config?.isolatedCheckinTimeoutMs,
+        queuedAt: message?.createdAt || "",
+        onEvent: observeExperience,
+      });
+      // The callback persists successes as they happen, including before a later
+      // timeout. Replay also supports adapters that only return a final trace.
+      for (const event of result?.events || []) observeExperience(event);
+      action = parseIsolatedCheckinResult(result?.text);
+      try { experienceObservation?.finish({ summary: action?.experienceSummary }); }
+      catch (error) { console.error(`[cyberboss] experience summary failed: ${error.message}`); }
+      if (action?.autonomousState) {
+        this.autonomousStateStore.update(action.autonomousState, {
+          action: action.kind === "handoff" ? "send_message" : "silent",
+          hadSuccessfulToolActivity: hasSuccessfulToolActivity(result?.events),
+        });
+      } else if (action?.kind === "silent") {
+        this.autonomousStateStore.update({}, {
+          action: "silent",
+          hadSuccessfulToolActivity: hasSuccessfulToolActivity(result?.events),
+        });
+      }
+    } catch (error) {
+      if (error?.code === "CLAUDE_NETWORK_BLOCKED") {
+        return false;
+      }
+      console.error(`[cyberboss] isolated autonomous check-in failed: ${formatErrorMessage(error)}`);
+      return true;
+    } finally {
+      this.turnGateStore.releaseScope(bindingKey, workspaceRoot);
+      await this.flushPendingInboundMessages?.({ bindingKey, workspaceRoot }).catch(() => {});
+    }
+
+    if (action?.kind !== "handoff") {
+      if (action?.kind === "invalid") {
+        console.error(`[cyberboss] invalid isolated autonomous result: ${action.reason}`);
+      }
+      return true;
+    }
+
+    const handoffMessage = {
+      id: `isolated-handoff:${crypto.randomUUID()}`,
+      accountId: prepared.accountId,
+      senderId: prepared.senderId,
+      workspaceRoot,
+      text: buildMainSessionHandoff(action),
+      createdAt: new Date().toISOString(),
+      reason: "isolated_handoff",
+    };
+    if (this.hasPendingInboundMessage?.(bindingKey, workspaceRoot)
+      || this.hasPendingImageInbound?.(bindingKey, workspaceRoot)
+      || this.isTurnDispatchBlocked(bindingKey, workspaceRoot)) {
+      this.systemMessageQueue.enqueue(handoffMessage);
+      return true;
+    }
+    const handoffPrepared = this.systemMessageDispatcher.buildPreparedMessage(
+      handoffMessage,
+      prepared.contextToken,
+    );
+    return this.dispatchPreparedTurn({
+      bindingKey,
+      workspaceRoot,
+      prepared: handoffPrepared,
+      persistOnNetworkBlock: false,
+    });
   }
 
   async dispatchChannelCommand(normalized, command) {
@@ -1464,6 +1583,12 @@ class CyberbossApp {
   }
 
   async handleRuntimeEvent(event) {
+    if (event?.type === "runtime.turn.completed" || event?.type === "runtime.turn.failed") {
+      try {
+        this.autonomousExperienceStore?.settleDelivery({ threadId: event.payload.threadId, turnId: event.payload.turnId,
+          succeeded: event.type === "runtime.turn.completed" && !event.payload.isError });
+      } catch (error) { console.error(`[cyberboss] experience acknowledgement failed: ${error.message}`); }
+    }
     const failureReplyTarget = event?.type === "runtime.turn.failed"
       ? this.streamDelivery.resolveReplyTargetForRun({
           threadId: event?.payload?.threadId,

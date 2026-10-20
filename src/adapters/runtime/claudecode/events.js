@@ -38,6 +38,7 @@ function mapClaudeCodeMessageToRuntimeEvent(message, raw) {
           threadId: message.sessionId,
           turnId: message.turnId,
           text: typeof message.text === "string" ? message.text : "",
+          isError: Boolean(message.isError),
         },
       };
     case "approval.requested":
